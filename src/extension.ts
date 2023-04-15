@@ -1,4 +1,4 @@
-import { commands, ExtensionContext, TextDocument, window, workspace, WorkspaceFolder } from 'vscode';
+import { commands, ExtensionContext, FileType, OutputChannel, TextDocument, Uri, window, workspace, WorkspaceFolder } from 'vscode';
 import { CloseAction, ErrorAction, ExecuteCommandRequest, LanguageClient, LanguageClientOptions, RevealOutputChannelOn, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 import { setDiagnosticsBegin, setDiagnosticsEnd, setCleanBegin, setCleanEnd, diagnosticsBegin, diagnosticsEnd, cleanBegin, cleanEnd } from './notifications';
 import { registerMiddleware, unregisterMiddleware, middleware } from './middleware';
@@ -26,18 +26,24 @@ export function activate(context: ExtensionContext) {
                     "--inspect=6009"
                 ]
             }
-        }
+        },
+
     }
     const output = window.createOutputChannel("IDE PureScript");
     // Options to control the language client
-    const clientOptions = (folder: WorkspaceFolder): LanguageClientOptions => ({
+    const clientOptions = (folder: Uri): LanguageClientOptions => ({
+
         // Register for PureScript and JavaScript documents in the given root folder
         documentSelector: [
-            { scheme: 'file', language: 'purescript', pattern: `${folder.uri.fsPath}/**/*` },
-            { scheme: 'file', language: 'javascript', pattern: `${folder.uri.fsPath}/**/*` },
-            ...folder.index === 0 ? [{ scheme: 'untitled', language: 'purescript' }] : []
+            { scheme: 'file', language: 'purescript', pattern: `${folder.fsPath}/**/*` },
+            { scheme: 'file', language: 'javascript', pattern: `${folder.fsPath}/**/*` },
+            // ...folder.index === 0 ? [{ scheme: 'untitled', language: 'purescript' }] : []
         ],
-        workspaceFolder: folder,
+        workspaceFolder: {
+            uri: folder,
+            name: "",
+            index: 0
+        },
         synchronize: {
             configurationSection: 'purescript',
             fileEvents:
@@ -84,10 +90,10 @@ export function activate(context: ExtensionContext) {
     }
 
     commandNames.forEach(command => {
-        commands.registerTextEditorCommand(command, (ed, edit, ...args) => {
-            const wf = getWorkspaceFolder(ed.document);
+        commands.registerTextEditorCommand(command, async (ed, edit, ...args) => {
+            const wf = await getSpagoRoot(ed.document);
             if (!wf) { return; }
-            const lc = clients.get(wf.uri.toString());
+            const lc = clients.get(wf.fsPath);
             if (!lc) {
                 output.appendLine("Didn't find language client for " + ed.document.uri);
                 return;
@@ -96,10 +102,10 @@ export function activate(context: ExtensionContext) {
         });
     })
 
-    const extensionCmd = (cmdName: string) => (ed, edit, ...args) => {
-        const wf = getWorkspaceFolder(ed.document);
+    const extensionCmd = (cmdName: string) => async (ed, edit, ...args) => {
+        const wf = await getSpagoRoot(ed.document);
         if (!wf) { return; }
-        const cmds = commandCode.get(wf.uri.toString());
+        const cmds = commandCode.get(wf.fsPath);
         if (!cmds) {
             output.appendLine("Didn't find language client for " + ed.document.uri);
             return;
@@ -107,17 +113,21 @@ export function activate(context: ExtensionContext) {
         cmds[cmdName](args);
     }
 
-    function addClient(folder: WorkspaceFolder) {
-        if (!clients.has(folder.uri.toString())) {
+    async function addClient(folder: Uri) {
+        console.log("Add clients for ", folder.fsPath);
+
+
+
+        if (!clients.has(folder.fsPath)) {
             try {
-                output.appendLine("Launching new language client for " + folder.uri.toString());
+                output.appendLine("Launching new language client for " + folder.fsPath);
                 const client = new LanguageClient('purescript', 'IDE PureScript', serverOptions, clientOptions(folder));
 
                 client.onReady().then(async () => {
-                    output.appendLine("Activated lc for " + folder.uri.toString());
+                    output.appendLine("Activated lc for " + folder.fsPath);
                     const cmds: ExtensionCommands = activatePS({ diagnosticsBegin, diagnosticsEnd, cleanBegin, cleanEnd }, client);
                     const cmdNames = await commands.getCommands();
-                    commandCode.set(folder.uri.toString(), cmds);
+                    commandCode.set(folder.fsPath, cmds);
                     Promise.all(Object.keys(cmds).map(async cmd => {
                         if (cmdNames.indexOf(cmd) === -1) {
                             commands.registerTextEditorCommand(cmd, extensionCmd(cmd));
@@ -126,19 +136,20 @@ export function activate(context: ExtensionContext) {
                 }).catch(err => output.appendLine(err));
 
                 client.start();
-                clients.set(folder.uri.toString(), client);
+                clients.set(folder.fsPath, client);
             } catch (e) {
                 output.appendLine(e);
             }
         }
     }
 
-    function didOpenTextDocument(document: TextDocument): void {
+    async function didOpenTextDocument(document: TextDocument) {
         if ((!['purescript', 'javascript'].includes(document.languageId)) || document.uri.scheme !== 'file') {
             return;
         }
 
-        const folder = workspace.getWorkspaceFolder(document.uri);
+        // const folder = workspace.getWorkspaceFolder(document.uri);
+        const folder = await getSpagoRoot(document)
         if (!folder) {
             output.appendLine("Didn't find workspace folder for " + document.uri);
             return;
@@ -148,28 +159,32 @@ export function activate(context: ExtensionContext) {
 
     workspace.onDidOpenTextDocument(didOpenTextDocument);
     workspace.textDocuments.forEach(didOpenTextDocument);
-    workspace.onDidChangeWorkspaceFolders((event) => {
-        for (const folder of event.removed) {
-            const client = clients.get(folder.uri.toString());
-            if (client) {
-                clients.delete(folder.uri.toString());
-                client.stop();
-            }
-        }
-    });
-    if (clients.size == 0) {
-        if (workspace.workspaceFolders && workspace.workspaceFolders.length == 1) {
-            output.appendLine("Only one folder in workspace, starting language server");
-            // The extension must be activated because there are Purs files in there
-            addClient(workspace.workspaceFolders[0]);
-        } else if (workspace.workspaceFolders && workspace.workspaceFolders.length > 1) {
-            output.appendLine("More than one folder in workspace, open a PureScript file to start language server");
-        } else if (!workspace.workspaceFolders) {
-            output.appendLine("It looks like you've started VS Code without specifying a folder, ie from a language extension development environment. Open a PureScript file to start language server.");
-        }
-    }
+    // Todo
+    // workspace.onDidChangeWorkspaceFolders((event) => {
+    //     for (const folder of event.removed) {
+    //         const client = clients.get(folder.fsPath);
+    //         if (client) {
+    //             clients.delete(folder.fsPath);
+    //             client.stop();
+    //         }
+    //     }
+    // });
+    // if (clients.size == 0) {
+    //     if (workspace.workspaceFolders && workspace.workspaceFolders.length == 1) {
+    //         output.appendLine("Only one folder in workspace, starting language server");
+    //         // The extension must be activated because there are Purs files in there
+    //         // Todo
+    //         // addClient(workspace.workspaceFolders[0]);
+    //     } else if (workspace.workspaceFolders && workspace.workspaceFolders.length > 1) {
+    //         output.appendLine("More than one folder in workspace, open a PureScript file to start language server");
+    //     } else if (!workspace.workspaceFolders) {
+    //         output.appendLine("It looks like you've started VS Code without specifying a folder, ie from a language extension development environment. Open a PureScript file to start language server.");
+    //     }
+    // }
     return { registerMiddleware, unregisterMiddleware, setDiagnosticsBegin, setDiagnosticsEnd, setCleanBegin, setCleanEnd }
 }
+
+
 export function deactivate(): Thenable<void> {
     let promises: Thenable<void>[] = [];
     for (let client of Array.from(clients.values())) {

@@ -1,6 +1,6 @@
 {
     "name": "ide-purescript",
-    "displayName": "PureScript IDE",
+    "displayName": "Dev: PureScript IDE",
     "description": "PureScript IntelliSense, tooltip, errors, code actions with language-server-purescript/purs IDE server",
     "version": "0.26.1",
     "publisher": "nwolverson",
