@@ -3,7 +3,7 @@ import { CloseAction, ErrorAction, ExecuteCommandRequest, LanguageClient, Langua
 import { setDiagnosticsBegin, setDiagnosticsEnd, setCleanBegin, setCleanEnd, diagnosticsBegin, diagnosticsEnd, cleanBegin, cleanEnd } from './notifications';
 import { registerMiddleware, unregisterMiddleware, middleware } from './middleware';
 import * as path from 'path';
-type ExtensionCommands = {[cmd: string]: (args: any[]) => void };
+type ExtensionCommands = { [cmd: string]: (args: any[]) => void };
 
 const clients: Map<string, LanguageClient> = new Map();
 const commandCode: Map<string, ExtensionCommands> = new Map();
@@ -14,18 +14,20 @@ export function activate(context: ExtensionContext) {
     // const module = require.resolve('purescript-language-server');
 
     const module = path.join(context.extensionPath, 'dist', 'server.js');
-    
+
     const opts = { module, transport: TransportKind.ipc };
     const serverOptions: ServerOptions =
-        {
-            run: opts,
-            debug: { ...opts, options: {
+    {
+        run: opts,
+        debug: {
+            ...opts, options: {
                 execArgv: [
                     "--nolazy",
                     "--inspect=6009"
                 ]
-            }}
+            }
         }
+    }
     const output = window.createOutputChannel("IDE PureScript");
     // Options to control the language client
     const clientOptions = (folder: WorkspaceFolder): LanguageClientOptions => ({
@@ -33,20 +35,20 @@ export function activate(context: ExtensionContext) {
         documentSelector: [
             { scheme: 'file', language: 'purescript', pattern: `${folder.uri.fsPath}/**/*` },
             { scheme: 'file', language: 'javascript', pattern: `${folder.uri.fsPath}/**/*` },
-            ...folder.index === 0 ? [ { scheme: 'untitled', language: 'purescript' } ] : []
+            ...folder.index === 0 ? [{ scheme: 'untitled', language: 'purescript' }] : []
         ],
         workspaceFolder: folder,
         synchronize: {
             configurationSection: 'purescript',
             fileEvents:
-                [ workspace.createFileSystemWatcher('**/*.purs')
-                , workspace.createFileSystemWatcher('**/*.js')
+                [workspace.createFileSystemWatcher('**/*.purs')
+                    , workspace.createFileSystemWatcher('**/*.js')
                 ]
         },
         outputChannel: output,
         revealOutputChannelOn: RevealOutputChannelOn.Never,
-        errorHandler: { 
-            error: (e,m,c) => { console.error(e,m,c); return { action: ErrorAction.Continue }  },
+        errorHandler: {
+            error: (e, m, c) => { console.error(e, m, c); return { action: ErrorAction.Continue } },
             closed: () => ({ action: CloseAction.DoNotRestart })
         },
         initializationOptions: {
@@ -116,9 +118,9 @@ export function activate(context: ExtensionContext) {
             try {
                 output.appendLine("Launching new language client for " + folder.uri.toString());
                 const client = new LanguageClient('purescript', 'IDE PureScript', serverOptions, clientOptions(folder));
-            
+
                 client.onReady().then(async () => {
-                    output.appendLine("Activated lc for "+ folder.uri.toString());
+                    output.appendLine("Activated lc for " + folder.uri.toString());
                     const cmds: ExtensionCommands = activatePS({ diagnosticsBegin, diagnosticsEnd, cleanBegin, cleanEnd }, client);
                     const cmdNames = await commands.getCommands();
                     commandCode.set(folder.uri.toString(), cmds);
@@ -138,7 +140,7 @@ export function activate(context: ExtensionContext) {
     }
 
     function didOpenTextDocument(document: TextDocument): void {
-        if ((! ['purescript', 'javascript'].includes(document.languageId)) || document.uri.scheme !== 'file') {
+        if ((!['purescript', 'javascript'].includes(document.languageId)) || document.uri.scheme !== 'file') {
             return;
         }
 
@@ -175,9 +177,9 @@ export function activate(context: ExtensionContext) {
     return { registerMiddleware, unregisterMiddleware, setDiagnosticsBegin, setDiagnosticsEnd, setCleanBegin, setCleanEnd }
 }
 export function deactivate(): Thenable<void> {
-	let promises: Thenable<void>[] = [];
-	for (let client of Array.from(clients.values())) {
-		promises.push(client.stop());
-	}
-	return Promise.all(promises).then(() => undefined);
+    let promises: Thenable<void>[] = [];
+    for (let client of Array.from(clients.values())) {
+        promises.push(client.stop());
+    }
+    return Promise.all(promises).then(() => undefined);
 }
