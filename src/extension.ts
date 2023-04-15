@@ -183,3 +183,46 @@ export function deactivate(): Thenable<void> {
     }
     return Promise.all(promises).then(() => undefined);
 }
+
+
+
+async function findSpagoRoot(output: OutputChannel, fileUri: Uri) {
+    const root = await findSpagoRootRec(fileUri);
+    if (root) {
+        output.appendLine("Found spago.dhall at " + root)
+    } else {
+        output.appendLine("No spago.dhall found.")
+    }
+
+    return root
+}
+
+async function findSpagoRootRec(currentUri: Uri): Promise<Uri | null> {
+    // Get dir of file
+    const dir = path.dirname(currentUri.fsPath)
+    console.log("dir: ", dir)
+
+    // Create uri for dir 
+    const uri = Uri.file(dir)
+    console.log("uri.fsPath: ", uri.fsPath)
+    const files = await workspace.fs.readDirectory(uri);
+
+    // Iterate over files looking for spago.dhall
+    for (const [file, fileType] of files) {
+        console.log("file: ", file)
+
+        // Todo: make configurable
+        if (file === "spago.dhall") {
+            return uri
+        }
+    }
+
+    // Use workspace root as abort condition
+    const wf = workspace.getWorkspaceFolder(currentUri)
+    if (dir === wf.uri.fsPath) {
+        return null
+    } else {
+        // If none found, try with next parent folder
+        return findSpagoRootRec(uri)
+    }
+}
