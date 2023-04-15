@@ -76,15 +76,9 @@ export function activate(context: ExtensionContext) {
         "sortImports"
     ].map(x => `purescript.${x}`);
 
-    const getWorkspaceFolder = (doc: TextDocument) => {
+    const getSpagoRoot = (doc: TextDocument) => {
         if (doc.uri.scheme === 'file') {
-            const wf = workspace.getWorkspaceFolder(doc.uri);
-            if (wf) {
-                return wf;
-            }
-        }
-        if (workspace.workspaceFolders && workspace.workspaceFolders.length > 0) {
-            return workspace.workspaceFolders[0];
+            return findSpagoRoot(output, doc.uri)
         }
         return null;
     }
