@@ -207,6 +207,13 @@ async function findSpagoRoot(output: OutputChannel, fileUri: Uri) {
 }
 
 async function findSpagoRootRec(currentUri: Uri): Promise<Uri | null> {
+    // Abort if we are in a node_modules or .spago folder
+    switch (true) {
+      case currentUri.fsPath.includes(".spago"):
+      case currentUri.fsPath.includes("node_modules"):
+        return null
+    }
+
     // Get dir of file
     const dir = path.dirname(currentUri.fsPath)
     console.log("dir: ", dir)
@@ -221,14 +228,17 @@ async function findSpagoRootRec(currentUri: Uri): Promise<Uri | null> {
         console.log("file: ", file)
 
         // Todo: make configurable
-        if (file === "spago.dhall") {
+        switch (file) {
+          case "spago.dhall":
+          case "spago.yml":
+          case "spago.yaml":
             return uri
         }
     }
 
     // Use workspace root as abort condition
-    const wf = workspace.getWorkspaceFolder(currentUri)
-    if (dir === wf.uri.fsPath) {
+    const workspaceFolder = workspace.getWorkspaceFolder(currentUri)
+    if (dir === workspaceFolder.uri.fsPath) {
         return null
     } else {
         // If none found, try with next parent folder
